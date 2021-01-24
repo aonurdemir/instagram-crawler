@@ -18,6 +18,7 @@ def usage():
         python crawler.py profile -u cal_foodie -o ./output
         python crawler.py profile_script -u cal_foodie -o ./output
         python crawler.py hashtag -t taiwan -o ./output
+        python crawler.py network -u onurdemir -d 2 -o ./output
 
         The default number for fetching posts via hashtag is 100.
     """
@@ -43,6 +44,11 @@ def get_posts_by_hashtag(tag, number, debug):
     return ins_crawler.get_latest_posts_by_tag(tag, number)
 
 
+def get_network_by_username(username, depth, debug):
+    ins_crawler = InsCrawler(has_screen=debug)
+    return ins_crawler.get_network_by_username(username, depth)
+
+
 def arg_required(args, fields=[]):
     for field in fields:
         if not getattr(args, field):
@@ -62,12 +68,13 @@ def output(data, filepath):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Instagram Crawler", usage=usage())
     parser.add_argument(
-        "mode", help="options: [posts, posts_full, profile, profile_script, hashtag]"
+        "mode", help="options: [posts, posts_full, profile, profile_script, hashtag, network]"
     )
     parser.add_argument("-n", "--number", type=int, help="number of returned posts")
     parser.add_argument("-u", "--username", help="instagram's username")
     parser.add_argument("-t", "--tag", help="instagram's tag name")
     parser.add_argument("-o", "--output", help="output file name(json format)")
+    parser.add_argument("-d", "--depth", type=int, help="depth of the network")
     parser.add_argument("--debug", action="store_true")
 
     prepare_override_settings(parser)
@@ -95,5 +102,9 @@ if __name__ == "__main__":
         output(
             get_posts_by_hashtag(args.tag, args.number or 100, args.debug), args.output
         )
+    elif args.mode == "network":
+        arg_required("username")
+        arg_required("depth")
+        output(get_network_by_username(args.username, args.depth or 3, args.debug), args.output)
     else:
         usage()

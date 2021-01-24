@@ -313,3 +313,40 @@ class InsCrawler(Logging):
         pbar.close()
         print("Done. Fetched %s posts." % (min(len(posts), num)))
         return posts[:num]
+
+    def get_network_by_username(self, username, depth):
+
+        TIMEOUT = 600
+        browser = self.browser
+
+        notif_modal = browser.find_one(".pbNvD")  # turn on notif modal
+        if notif_modal:
+            browser.find_one(".HoLwm").click()  # not now button
+
+        user_profiles = []
+        q = [username]
+
+        while q.__len__() > 0 and depth >= 0:
+            depth = depth - 1
+            for i in range(0, q.__len__()):
+                randmized_sleep(2)
+                popped_username = q.pop(0)
+                user_profile = self.get_user_profile(popped_username)
+                user_profiles.append(user_profile)
+
+                is_private = browser.find_one(".rkEop")
+                if is_private:
+                    user_profile['private'] = True
+                    continue
+
+                followers_link = browser.find(".k9GMp a")[0]
+                followers_link.click()
+                followers_li_items = browser.find(".jSC57 li")
+
+                follower_usernames = []
+                for li in followers_li_items:
+                    title = li.find_element_by_class_name("FPmhX").get_attribute("title")
+                    follower_usernames.append(title)
+                    q.append(title)
+
+                user_profile['followers'] = follower_usernames
