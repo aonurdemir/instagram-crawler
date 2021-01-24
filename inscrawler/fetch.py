@@ -1,9 +1,15 @@
 import re
 from time import sleep
+from typing import List
 
+import dateutil.parser
+
+from .exceptions import RetryException
+from .model.comment import Comment
+from .model.post import Post
+from .persistence.data.profile_data import get_or_create_profile
 from .settings import settings
 from .utils import retry
-from .exceptions import RetryException
 
 
 def get_parsed_mentions(raw_text):
@@ -36,13 +42,14 @@ def fetch_hashtags(raw_test, dict_obj):
         dict_obj["hashtags"] = hashtags
 
 
-def fetch_datetime(browser, dict_post):
+def fetch_datetime(browser, post: Post):
     ele_datetime = browser.find_one(".eo2As .c-Yi7 ._1o9PC")
     datetime = ele_datetime.get_attribute("datetime")
-    dict_post["datetime"] = datetime
+
+    post.post_date = int(dateutil.parser.parse(datetime).timestamp())
 
 
-def fetch_imgs(browser, dict_post):
+def fetch_imgs(browser, post: Post):
     img_urls = set()
     while True:
         ele_imgs = browser.find("._97aPb img", waittime=10)
@@ -61,7 +68,7 @@ def fetch_imgs(browser, dict_post):
         else:
             break
 
-    dict_post["img_urls"] = list(img_urls)
+    post.url_imgs = list(img_urls)
 
 
 def fetch_likes_plays(browser, dict_post):
@@ -89,7 +96,7 @@ def fetch_likes_plays(browser, dict_post):
     )
 
 
-def fetch_likers(browser, dict_post):
+def fetch_likers(browser, post: Post):
     if not settings.fetch_likers:
         return
     like_info_btn = browser.find_one(".EDfFK .sqdOP._8A5w5")
@@ -111,28 +118,26 @@ def fetch_likers(browser, dict_post):
         sleep(0.6)
         likers_elems = list(browser.find(liker_elems_css_selector))
 
-    dict_post["likers"] = list(likers.values())
+    post.likers = list([get_or_create_profile(username) for username in likers.values()])
     close_btn = browser.find_one(".WaOAr button")
     close_btn.click()
 
 
-def fetch_caption(browser, dict_post):
+def fetch_caption(browser, post: Post):
     ele_comments = browser.find(".eo2As .gElp9")
 
     if len(ele_comments) > 0:
-
         temp_element = browser.find("span", ele_comments[0])
 
         for element in temp_element:
+            if element.text not in ['Verified', ''] and post.caption is None:
+                post.caption = element.text
 
-            if element.text not in ['Verified', ''] and 'caption' not in dict_post:
-                dict_post["caption"] = element.text
-
-        fetch_mentions(dict_post.get("caption", ""), dict_post)
-        fetch_hashtags(dict_post.get("caption", ""), dict_post)
+        # fetch_mentions(dict_post.get("caption", ""), dict_post)
+        # fetch_hashtags(dict_post.get("caption", ""), dict_post)
 
 
-def fetch_comments(browser, dict_post):
+def fetch_comments(browser, post: Post):
     if not settings.fetch_comments:
         return
 
@@ -159,16 +164,16 @@ def fetch_comments(browser, dict_post):
         sleep(0.3)
 
     ele_comments = browser.find(".eo2As .gElp9")
-    comments = []
+    comments: List[Comment] = []
     for els_comment in ele_comments[1:]:
-        comment_obj = {}
+        comment_obj: Comment = Comment()
 
         author = browser.find_one(".sqdOP.yWX7d._8A5w5.ZIAjV", els_comment).text
-        #author = browser.find_one(".FPmhX", els_comment).text
-        comment_obj["author"] = author
+        # author = browser.find_one(".FPmhX", els_comment).text
+        comment_obj.author = get_or_create_profile(author)
 
+        comment_obj.likers = list()
         if settings.fetch_likers:
-            likers_list = []
             likers_btn = browser.find_one('._7UhW9 button', els_comment)
             if ('like' in likers_btn.text or 'curtida' in likers_btn.text):
                 likers_btn.click()
@@ -190,7 +195,8 @@ def fetch_comments(browser, dict_post):
                     sleep(0.6)
                     likers_elems = list(browser.find(liker_elems_css_selector))
 
-                comment_obj["likers"] = list(likers.values())
+                comment_obj.likers = list([get_or_create_profile(username) for username in likers.values()])
+
                 close_btn = browser.find_one(".WaOAr button")
                 close_btn.click()
 
@@ -198,19 +204,19 @@ def fetch_comments(browser, dict_post):
         for element in comment_element:
             if element.text not in ['Verified', '']:
                 comment = element.text
-        comment_obj["comment"] = comment
+                comment_obj.comment = comment
 
         time_element = browser.find_one("time", els_comment)
         datetime = time_element.get_attribute("datetime")
-        comment_obj["datetime"] = datetime
+        comment_obj.comment_date = int(dateutil.parser.parse(datetime).timestamp())
 
-        fetch_mentions(comment, comment_obj)
-        fetch_hashtags(comment, comment_obj)
+        # TODO
+        # fetch_mentions(comment, comment_obj)
+        # fetch_hashtags(comment, comment_obj)
 
         comments.append(comment_obj)
 
-    if comments:
-        dict_post["comments"] = comments
+    post.comments = comments
 
 
 def fetch_initial_comment(browser, dict_post):

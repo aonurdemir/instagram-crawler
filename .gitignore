@@ -25,4 +25,5 @@ secret.py
 inscrawler/bin/*
 !inscrawler/bin/.keep
 output
-./idea/*
+.idea
+venv
