@@ -56,6 +56,7 @@ def get_posts_by_hashtag(tag, number, debug):
 
 def get_network_by_username(username, depth, debug):
     ins_crawler = InsCrawler(has_screen=debug)
+    ins_crawler.login()
     return ins_crawler.get_network_by_username(username, depth)
 
 
