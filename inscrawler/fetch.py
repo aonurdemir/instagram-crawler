@@ -7,7 +7,7 @@ import dateutil.parser
 from .exceptions import RetryException
 from .model.comment import Comment
 from .model.post import Post
-from .persistence.data.profile_data import get_or_create_profile
+#from .persistence.data.profile_data import get_or_create_profile
 from .settings import settings
 from .utils import retry
 

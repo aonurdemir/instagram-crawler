@@ -11,9 +11,9 @@ from typing import List
 from inscrawler import InsCrawler
 from inscrawler.model.post import Post
 from inscrawler.model.profile import Profile
-from inscrawler.persistence.data.post_data import save_post
-from inscrawler.persistence.data.profile_data import get_or_create_profile, create_or_update_profile, \
-    get_profile_to_crawl
+#from inscrawler.persistence.data.post_data import save_post
+# from inscrawler.persistence.data.profile_data import get_or_create_profile, create_or_update_profile, \
+#     get_profile_to_crawl
 from inscrawler.settings import override_settings, settings
 from inscrawler.settings import prepare_override_settings
 
@@ -78,11 +78,11 @@ def output(data, filepath):
 def get_post_full(username, number=None, debug=False, ins_crawler=None):
     posts: List[Post] = get_posts_by_user(username, number, True, debug, ins_crawler)
 
-    profile: Profile = get_or_create_profile(username)
+    # profile: Profile = get_or_create_profile(username)
 
     for post in posts:
         post.profile = profile
-        save_post(post)
+        # save_post(post)
 
     return posts
 
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         ins_crawler.login()
         profile = ins_crawler.get_user_profile(args.username, True)
 
-        create_or_update_profile(profile)
+        #create_or_update_profile(profile)
 
     elif args.mode == "profile_script":
         arg_required("username")
@@ -143,13 +143,13 @@ if __name__ == "__main__":
         ins_crawler = InsCrawler(has_screen=args.debug)
         ins_crawler.login()
 
-        while True:
-            profiles_to_crawl: List[Profile] = get_profile_to_crawl(10)
-            for profile_to_crawl in profiles_to_crawl:
-                profile = ins_crawler.get_user_profile(profile_to_crawl.username, True)
-                create_or_update_profile(profile)
-
-                get_post_full(profile.username, profile.n_posts, args.debug, ins_crawler)
+        # while True:
+        #     profiles_to_crawl: List[Profile] = get_profile_to_crawl(10)
+        #     for profile_to_crawl in profiles_to_crawl:
+        #         profile = ins_crawler.get_user_profile(profile_to_crawl.username, True)
+        #         create_or_update_profile(profile)
+        #
+        #         get_post_full(profile.username, profile.n_posts, args.debug, ins_crawler)
     elif args.mode == "network":
         arg_required("username")
         arg_required("depth")
