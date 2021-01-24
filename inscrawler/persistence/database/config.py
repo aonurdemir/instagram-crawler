@@ -2,7 +2,7 @@ import os
 from configparser import ConfigParser
 
 
-def config(filename='database.ini', section='postgresql'):
+def config(filename='database.ini', section='sqlite'):
     parser = ConfigParser()
     parser.read(os.path.join(os.path.dirname(__file__), filename))
 
