@@ -9,6 +9,8 @@ import time
 import traceback
 from builtins import open
 from time import sleep
+from datetime import datetime
+import dateutil.parser
 
 from tqdm import tqdm
 
@@ -26,6 +28,8 @@ from .utils import instagram_int
 from .utils import randmized_sleep
 from .utils import retry
 
+from selenium import webdriver
+
 
 class Logging(object):
     PREFIX = "instagram-crawler"
@@ -34,7 +38,8 @@ class Logging(object):
         try:
             timestamp = int(time.time())
             self.cleanup(timestamp)
-            self.logger = open("/tmp/%s-%s.log" % (Logging.PREFIX, timestamp), "w")
+            self.logger = open("/tmp/%s-%s.log" %
+                               (Logging.PREFIX, timestamp), "w")
             self.log_disable = False
         except Exception:
             self.log_disable = True
@@ -66,8 +71,7 @@ class InsCrawler(Logging):
     def __init__(self, has_screen=False):
         super(InsCrawler, self).__init__()
         self.browser = Browser(has_screen)
-        self.page_height = 0
-        self.login()
+        self.page_height = 0        
 
     def _dismiss_login_prompt(self):
         ele_login = self.browser.find_one(".Ls00D .Szr5J")
@@ -93,30 +97,103 @@ class InsCrawler(Logging):
 
         check_login()
 
-    def get_user_profile(self, username):
+    def get_user_profile(self, username, follow_list_enabled=False):
         browser = self.browser
         url = "%s/%s/" % (InsCrawler.URL, username)
         browser.get(url)
-        name = browser.find_one(".rhpdm")
-        desc = browser.find_one(".-vDIg span")
-        photo = browser.find_one("._6q-tv")
-        statistics = [ele.text for ele in browser.find(".g47SY")]
-        post_num, follower_num, following_num = statistics
-        return {
-            "name": name.text,
-            "desc": desc.text if desc else None,
-            "photo_url": photo.get_attribute("src"),
+
+        try:
+            name = browser.find_one(".rhpdm").text
+        except AttributeError:
+            name = ''
+        
+        try:
+            desc = browser.find_one(".-vDIg > span").text
+        except AttributeError:
+            desc = ''
+
+        try:
+            photo = browser.find_one("._6q-tv").get_attribute("src")
+        except AttributeError:
+            try:
+                photo = browser.find_one(".be6sR").get_attribute("src") #Private profile
+            except AttributeError:
+                photo = ''
+
+        statistics = browser.find(".g47SY")
+
+        post_num = statistics[0].text.replace(",", "")
+        follower_num = statistics[1].get_attribute("title").replace(",", "")
+        following_num = statistics[2].text.replace(",", "")
+
+        followers = None
+        if follow_list_enabled:
+            follower_btn = statistics[1]
+            follower_btn.click()
+
+            follower_elems_css_selector = ".RnEpo.Yx5HN .isgrP .PZuss .FPmhX"
+            try:
+                follower_elems = list(browser.find(follower_elems_css_selector, waittime=0.6))
+
+                username_last_check = None
+                current_username = None
+
+                follower_elems[-1].location_once_scrolled_into_view
+                sleep(0.6)
+
+                follower_elems = list(browser.find(follower_elems_css_selector))
+                last_follower = follower_elems[-1]
+                username_last_check = last_follower.get_attribute("title")
+                while follower_elems:
+                    # Scroll down
+                    script = "document.querySelector(\".isgrP\").scrollTo(0, document.querySelector(\".isgrP\").scrollHeight);"
+                    self.browser.driver.execute_script(script)
+                    sleep(0.6)
+
+                    # Get last username
+                    last_profile = browser.find_one(".wo9IH:last-child .enpQJ a")
+                    try:
+                        current_username = last_profile.get_attribute("title")
+                    except AttributeError:
+                        break
+
+                    # Check if the last username of current iteration is the same as the previous iteration
+                    if current_username == username_last_check:
+                        break
+
+                    # Save last username of list
+                    username_last_check = current_username
+
+                follower_elems = list(browser.find(follower_elems_css_selector, waittime=1))
+                followers = list([ele.get_attribute("title") for ele in follower_elems])
+
+                close_btn = browser.find_one("button.wpO6b")
+                close_btn.click()
+            except:
+                print('Private profile')
+
+
+        return_obj = {
+            "name": name,
+            "desc": desc,
+            "photo_url": photo,
             "post_num": post_num,
             "follower_num": follower_num,
-            "following_num": following_num,
+            "following_num": following_num
         }
+
+        if followers is not None:
+            return_obj['followers'] = followers
+
+        return return_obj
 
     def get_user_profile_from_script_shared_data(self, username):
         browser = self.browser
         url = "%s/%s/" % (InsCrawler.URL, username)
         browser.get(url)
         source = browser.driver.page_source
-        p = re.compile(r"window._sharedData = (?P<json>.*?);</script>", re.DOTALL)
+        p = re.compile(
+            r"window._sharedData = (?P<json>.*?);</script>", re.DOTALL)
         json_data = re.search(p, source).group("json")
         data = json.loads(json_data)
 
@@ -134,13 +211,14 @@ class InsCrawler(Logging):
 
     def get_user_posts(self, username, number=None, detail=False):
         user_profile = self.get_user_profile(username)
+        print(user_profile)
         if not number:
             number = instagram_int(user_profile["post_num"])
 
         self._dismiss_login_prompt()
 
         if detail:
-            return self._get_posts_full(number)
+            return self._get_posts_full(username, number)
         else:
             return self._get_posts(number)
 
@@ -162,7 +240,8 @@ class InsCrawler(Logging):
         ele_post.click()
 
         for _ in range(maximum):
-            heart = browser.find_one(".dCJp8 .glyphsSpriteHeart__outline__24__grey_9")
+            heart = browser.find_one(
+                ".dCJp8 .glyphsSpriteHeart__outline__24__grey_9")
             if heart:
                 heart.click()
                 randmized_sleep(2)
@@ -174,7 +253,7 @@ class InsCrawler(Logging):
             else:
                 break
 
-    def _get_posts_full(self, num):
+    def _get_posts_full(self, username, num):
         @retry()
         def check_next_post(cur_key):
             ele_a_datetime = browser.find_one(".eo2As .c-Yi7")
@@ -191,6 +270,11 @@ class InsCrawler(Logging):
         browser.implicitly_wait(1)
         browser.scroll_down()
         ele_post = browser.find_one(".v1Nh3 a")
+
+        #Return empty list for users without posts
+        if ele_post is None:
+            return list()
+
         ele_post.click()
         dict_posts = {}
 
@@ -198,8 +282,6 @@ class InsCrawler(Logging):
         pbar.set_description("fetching")
         cur_key = None
 
-        all_posts = self._get_posts(num)
-        i = 1
 
         # Fetching all posts
         for _ in range(num):
@@ -207,9 +289,7 @@ class InsCrawler(Logging):
 
             # Fetching post detail
             try:
-                if(i < num):
-                    check_next_post(all_posts[i]['key'])
-                    i = i + 1
+                check_next_post(cur_key)
 
                 # Fetching datetime and url as key
                 ele_a_datetime = browser.find_one(".eo2As .c-Yi7")
@@ -224,21 +304,21 @@ class InsCrawler(Logging):
 
             except RetryException:
                 sys.stderr.write(
-                    "\x1b[1;31m"
-                    + "Failed to fetch the post: "
-                    + cur_key or 'URL not fetched'
-                    + "\x1b[0m"
-                    + "\n"
+                    "\x1b[1;31m" +
+                    "Failed to fetch the post: " +
+                    cur_key or 'URL not fetched' +
+                    "\x1b[0m" +
+                    "\n"
                 )
                 break
 
             except Exception:
                 sys.stderr.write(
-                    "\x1b[1;31m"
-                    + "Failed to fetch the post: "
-                    + cur_key if isinstance(cur_key,str) else 'URL not fetched'
-                    + "\x1b[0m"
-                    + "\n"
+                    "\x1b[1;31m" +
+                    "Failed to fetch the post: " +
+                    cur_key if isinstance(cur_key, str) else 'URL not fetched' +
+                                                               "\x1b[0m" +
+                                                               "\n"
                 )
                 traceback.print_exc()
 
@@ -246,11 +326,15 @@ class InsCrawler(Logging):
             dict_posts[browser.current_url] = dict_post
 
             pbar.update(1)
+            right_arrow = browser.find_one("._65Bje")
+            if right_arrow:
+                right_arrow.click()
 
         pbar.close()
         posts = list(dict_posts.values())
         if posts:
             posts.sort(key=lambda post: post["datetime"], reverse=True)
+
         return posts
 
     def _get_posts(self, num):
@@ -272,7 +356,7 @@ class InsCrawler(Logging):
             for ele in ele_posts:
                 key = ele.get_attribute("href")
                 if key not in key_set:
-                    dict_post = { "key": key }
+                    dict_post = {"key": key}
                     ele_img = browser.find_one(".KL4Bh img", ele)
                     dict_post["caption"] = ele_img.get_attribute("alt")
                     dict_post["img_url"] = ele_img.get_attribute("src")

@@ -2,6 +2,8 @@ import re
 from time import sleep
 
 from .settings import settings
+from .utils import retry
+from .exceptions import RetryException
 
 
 def get_parsed_mentions(raw_text):
@@ -23,6 +25,7 @@ def fetch_mentions(raw_test, dict_obj):
     mentions = get_parsed_mentions(raw_test)
     if mentions:
         dict_obj["mentions"] = mentions
+
 
 def fetch_hashtags(raw_test, dict_obj):
     if not settings.fetch_hashtags:
@@ -60,6 +63,7 @@ def fetch_imgs(browser, dict_post):
 
     dict_post["img_urls"] = list(img_urls)
 
+
 def fetch_likes_plays(browser, dict_post):
     if not settings.fetch_likes_plays:
         return
@@ -70,7 +74,8 @@ def fetch_likes_plays(browser, dict_post):
 
     if el_see_likes is not None:
         el_plays = browser.find_one(".vcOH2 > span")
-        dict_post["views"] = int(el_plays.text.replace(",", "").replace(".", ""))
+        dict_post["views"] = int(
+            el_plays.text.replace(",", "").replace(".", ""))
         el_see_likes.click()
         el_likes = browser.find_one(".vJRqr > span")
         likes = el_likes.text
@@ -87,7 +92,7 @@ def fetch_likes_plays(browser, dict_post):
 def fetch_likers(browser, dict_post):
     if not settings.fetch_likers:
         return
-    like_info_btn = browser.find_one(".EDfFK ._0mzm-.sqdOP")
+    like_info_btn = browser.find_one(".EDfFK .sqdOP._8A5w5")
     like_info_btn.click()
 
     likers = {}
@@ -116,20 +121,28 @@ def fetch_caption(browser, dict_post):
 
     if len(ele_comments) > 0:
 
-        temp_element = browser.find("span",ele_comments[0])
+        temp_element = browser.find("span", ele_comments[0])
 
         for element in temp_element:
 
-            if element.text not in ['Verified',''] and 'caption' not in dict_post:
+            if element.text not in ['Verified', ''] and 'caption' not in dict_post:
                 dict_post["caption"] = element.text
 
-        fetch_mentions(dict_post.get("caption",""), dict_post)
-        fetch_hashtags(dict_post.get("caption",""), dict_post)
+        fetch_mentions(dict_post.get("caption", ""), dict_post)
+        fetch_hashtags(dict_post.get("caption", ""), dict_post)
 
 
 def fetch_comments(browser, dict_post):
     if not settings.fetch_comments:
         return
+
+    @retry()
+    def check_next_likers():
+        ele_a_datetime = browser.find_one(".eo2As .c-Yi7")
+
+        # It takes time to load the post for some users with slow network
+        if ele_a_datetime is None:
+            raise RetryException()
 
     show_more_selector = "button .glyphsSpriteCircle_add__outline__24__grey_9"
     show_more = browser.find_one(show_more_selector)
@@ -148,16 +161,48 @@ def fetch_comments(browser, dict_post):
     ele_comments = browser.find(".eo2As .gElp9")
     comments = []
     for els_comment in ele_comments[1:]:
-        author = browser.find_one(".FPmhX", els_comment).text
+        comment_obj = {}
 
-        temp_element = browser.find("span", els_comment)
+        author = browser.find_one(".sqdOP.yWX7d._8A5w5.ZIAjV", els_comment).text
+        #author = browser.find_one(".FPmhX", els_comment).text
+        comment_obj["author"] = author
 
-        for element in temp_element:
+        if settings.fetch_likers:
+            likers_list = []
+            likers_btn = browser.find_one('._7UhW9 button', els_comment)
+            if ('like' in likers_btn.text or 'curtida' in likers_btn.text):
+                likers_btn.click()
 
-            if element.text not in ['Verified','']:
+                likers = {}
+                liker_elems_css_selector = ".Igw0E ._7UhW9.xLCgt a"
+                likers_elems = list(browser.find(liker_elems_css_selector))
+                last_liker = None
+                while likers_elems:
+                    for ele in likers_elems:
+                        likers[ele.get_attribute(
+                            "href")] = ele.get_attribute("title")
+
+                    if last_liker == likers_elems[-1]:
+                        break
+
+                    last_liker = likers_elems[-1]
+                    last_liker.location_once_scrolled_into_view
+                    sleep(0.6)
+                    likers_elems = list(browser.find(liker_elems_css_selector))
+
+                comment_obj["likers"] = list(likers.values())
+                close_btn = browser.find_one(".WaOAr button")
+                close_btn.click()
+
+        comment_element = browser.find("span", els_comment)
+        for element in comment_element:
+            if element.text not in ['Verified', '']:
                 comment = element.text
+        comment_obj["comment"] = comment
 
-        comment_obj = {"author": author, "comment": comment}
+        time_element = browser.find_one("time", els_comment)
+        datetime = time_element.get_attribute("datetime")
+        comment_obj["datetime"] = datetime
 
         fetch_mentions(comment, comment_obj)
         fetch_hashtags(comment, comment_obj)
