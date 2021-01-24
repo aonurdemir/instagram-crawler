@@ -28,7 +28,7 @@ from .fetch import fetch_likers
 from .fetch import fetch_likes_plays
 from .model.post import Post
 from .model.profile import Profile
-from .persistence.data.profile_data import get_or_create_profile
+#from .persistence.data.profile_data import get_or_create_profile
 from .utils import randmized_sleep
 from .utils import retry
 
@@ -158,49 +158,48 @@ class InsCrawler(Logging):
             except Exception as e:
                 print('Private profile')
 
-            statistics_elem = self.browser.find(PROFILE_STATISTICS)
-
-            following_elem = statistics_elem[2]
-            following_btn = following_elem
-            following_btn.click()
-
-            try:
-                following_elems = list(browser.find(PROFILE_FOLLOWERS_ELEMENTS, waittime=0.6))
-
-                following_elems[-1].location_once_scrolled_into_view
-                sleep(0.6)
-
-                following_elems = list(browser.find(PROFILE_FOLLOWERS_ELEMENTS))
-                last_followed = following_elems[-1]
-                username_last_check = last_followed.get_attribute("title")
-                while following_elems:
-                    # Scroll down
-                    self.browser.driver.execute_script(FOLLOWERS_SCROLL_DOWN)
-                    sleep(0.6)
-
-                    # Get last followed
-                    try:
-                        last_followed = browser.find_one(FOLLOWERS_LAST_PROFILE)
-                        current_username = last_followed.get_attribute("title")
-                    except AttributeError:
-                        break
-
-                    # Check if the last username of current iteration is the same as the previous iteration
-                    if current_username == username_last_check:
-                        break
-
-                    # Save last username of list
-                    username_last_check = current_username
-
-                following_elems = list(browser.find(PROFILE_FOLLOWERS_ELEMENTS, waittime=1))
-                followeds_username: List[str] = list([ele.get_attribute("title") for ele in following_elems])
-
-                followings: List[Profile] = [get_or_create_profile(username) for username in followeds_username]
-
-                close_btn = browser.find_one(".WaOAr button.wpO6b")
-                close_btn.click()
-            except Exception as e:
-                print('Private profile')
+            #statistics_elem = self.browser.find(PROFILE_STATISTICS)
+            # following_elem = statistics_elem[2]
+            # following_btn = following_elem
+            # following_btn.click()
+            #
+            # try:
+            #     following_elems = list(browser.find(PROFILE_FOLLOWERS_ELEMENTS, waittime=0.6))
+            #
+            #     following_elems[-1].location_once_scrolled_into_view
+            #     sleep(0.6)
+            #
+            #     following_elems = list(browser.find(PROFILE_FOLLOWERS_ELEMENTS))
+            #     last_followed = following_elems[-1]
+            #     username_last_check = last_followed.get_attribute("title")
+            #     while following_elems:
+            #         # Scroll down
+            #         self.browser.driver.execute_script(FOLLOWERS_SCROLL_DOWN)
+            #         sleep(0.6)
+            #
+            #         # Get last followed
+            #         try:
+            #             last_followed = browser.find_one(FOLLOWERS_LAST_PROFILE)
+            #             current_username = last_followed.get_attribute("title")
+            #         except AttributeError:
+            #             break
+            #
+            #         # Check if the last username of current iteration is the same as the previous iteration
+            #         if current_username == username_last_check:
+            #             break
+            #
+            #         # Save last username of list
+            #         username_last_check = current_username
+            #
+            #     following_elems = list(browser.find(PROFILE_FOLLOWERS_ELEMENTS, waittime=1))
+            #     followeds_username: List[str] = list([ele.get_attribute("title") for ele in following_elems])
+            #
+            #     followings: List[Profile] = [get_or_create_profile(username) for username in followeds_username]
+            #
+            #     close_btn = browser.find_one(".WaOAr button.wpO6b")
+            #     close_btn.click()
+            # except Exception as e:
+            #     print('Private profile')
 
         return Profile(username=username, name=name, description=description, n_followers=follower_num,
                        n_following=following_num, n_posts=post_num, followers=followers, followings=followings, photo_url=photo)
@@ -452,32 +451,38 @@ class InsCrawler(Logging):
 
         user_profiles = []
         q = [username]
+        visited = {username}
 
         while q.__len__() > 0 and depth > 0:
             q_length = q.__len__()
             for i in range(0, q_length):
-                randmized_sleep(2)
                 popped_username = q.pop(0)
                 user_profile = self.get_user_profile(popped_username)
                 user_profiles.append(user_profile)
+                follower_profiles = user_profile.followers
+                for profile in follower_profiles:
+                    if profile.username not in visited:
+                        q.append(profile.username)
+                        visited.update(profile.username)
+                # is_private = browser.find_one(".rkEop")
+                # if is_private:
+                #     user_profile['private'] = True
+                #     continue
+                #
+                # followers_link = browser.find(".k9GMp a")[0]
+                # followers_link.click()
+                # followers_li_items = browser.find(".jSC57 li")
+                #
+                # follower_usernames = []
+                # for li in followers_li_items:
+                #     title = li.find_element_by_class_name("FPmhX").get_attribute("title")
+                #     follower_usernames.append(title)
+                #     q.append(title)
 
-                is_private = browser.find_one(".rkEop")
-                if is_private:
-                    user_profile['private'] = True
-                    continue
-
-                followers_link = browser.find(".k9GMp a")[0]
-                followers_link.click()
-                followers_li_items = browser.find(".jSC57 li")
-
-                follower_usernames = []
-                for li in followers_li_items:
-                    title = li.find_element_by_class_name("FPmhX").get_attribute("title")
-                    follower_usernames.append(title)
-                    q.append(title)
-
-                user_profile['followers'] = follower_usernames
+                # user_profile['followers'] = follower_usernames
 
             depth = depth - 1
+
+        return
 
 
